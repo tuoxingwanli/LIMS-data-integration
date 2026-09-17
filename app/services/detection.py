@@ -72,6 +72,15 @@ class DetectionService:
                 return self._failure("未找到正在进行的检测")
             capture_result = self.capture_adapter.stop(blind_sample_no)
             if not capture_result.success:
+                try:
+                    self.sessions.record_error(
+                        connection,
+                        session["id"],
+                        capture_result.error or "结束采集失败",
+                    )
+                    connection.commit()
+                except sqlite3.Error:
+                    connection.rollback()
                 return self._failure(capture_result.error or "结束录屏失败")
             try:
                 self.sessions.stop(

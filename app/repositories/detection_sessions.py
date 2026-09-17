@@ -81,3 +81,18 @@ class DetectionSessionRepository:
             """,
             (ended_at, screenshot_ref, session_id),
         )
+
+    def record_error(
+        self,
+        connection: sqlite3.Connection,
+        session_id: int,
+        error_message: str,
+    ) -> None:
+        connection.execute(
+            """
+            UPDATE detection_sessions
+            SET error_message = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND status = 'recording'
+            """,
+            (error_message, session_id),
+        )

@@ -57,7 +57,7 @@ python -m uvicorn main:app --reload
 4. 上传实验结果，查询结果详情。
 5. 点击“回推 LIMS”，默认发送到本地 Mock 地址，并在响应面板查看 JSON。
 
-页面的服务状态、最近响应和操作日志只用于本地联调辅助。录屏和截图显示为 Mock 模式，不代表已经生成真实视频或图片。
+页面的服务状态、最近响应和操作日志只用于本地联调辅助。接口返回 `code = "500"` 时，页面会按业务失败标记，即使 HTTP 状态仍为 200。录屏和截图显示为 Mock 模式，不代表已经生成真实视频或图片。
 
 ## 检测客户端请求示例
 
@@ -103,6 +103,7 @@ python -m uvicorn main:app --reload
 pytest
 python -m compileall app main.py
 python -m pip check
+node --check frontend/app.js
 ```
 
 ## 项目文档

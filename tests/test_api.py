@@ -56,6 +56,15 @@ def test_frontend_static_assets_are_served(tmp_path):
         assert "LIMS / SCADA 设备对接联调" in page.text
         assert client.get("/styles.css").status_code == 200
         assert client.get("/app.js").status_code == 200
+        openapi = client.get("/openapi.json")
+        assert openapi.status_code == 200
+        assert {
+            "/startTest",
+            "/stopTest",
+            "/api/work-orders",
+            "/api/scada/work-orders",
+            "/api/scada/results",
+        }.issubset(openapi.json()["paths"])
 
 
 def test_work_order_loop_and_idempotent_result_update(tmp_path):
@@ -157,4 +166,8 @@ def test_stop_capture_failure_does_not_mark_session_stopped(tmp_path):
         response = client.post("/stopTest", json={"blindSampleNo": "S-2"})
         assert response.json()["code"] == "500"
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("SELECT status FROM detection_sessions").fetchone()[0] == "recording"
+        row = connection.execute(
+            "SELECT status, error_message FROM detection_sessions"
+        ).fetchone()
+        assert row[0] == "recording"
+        assert row[1] == "结束失败"

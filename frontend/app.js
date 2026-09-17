@@ -14,6 +14,22 @@ function pretty(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function errorMessage(body, status) {
+  if (Array.isArray(body?.detail)) {
+    return body.detail.map((item) => {
+      const location = Array.isArray(item.loc) ? item.loc.filter(Boolean).join(".") : "请求";
+      return `${location}: ${item.msg || "格式错误"}`;
+    }).join("；");
+  }
+  if (typeof body?.detail === "string") return body.detail;
+  if (typeof body?.message === "string") return body.message;
+  return status ? `HTTP ${status}` : "网络请求失败";
+}
+
+function isBusinessError(body) {
+  return body?.code === "500" || body?.success === false;
+}
+
 function logEvent(title, detail, isError = false) {
   const list = $("#activity-list");
   list.querySelector(".empty")?.remove();
@@ -36,13 +52,17 @@ function showResponse(path, status, body, isError = false) {
 async function request(path, options = {}, label = path, silent = false) {
   if (!silent) logEvent(`调用 ${label}`, `${options.method || "GET"} ${path}`);
   try {
-    const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
+    const headers = { ...(options.headers || {}) };
+    if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    const response = await fetch(path, { ...options, headers });
     const text = await response.text();
     let body;
     try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
-    if (!silent) showResponse(path, response.status, body, !response.ok);
-    if (!silent) logEvent(`${label}${response.ok ? "完成" : "返回错误"}`, `HTTP ${response.status}`, !response.ok);
-    if (!response.ok) throw new Error(body?.detail || body?.message || `HTTP ${response.status}`);
+    const businessError = isBusinessError(body);
+    const failed = !response.ok || businessError;
+    if (!silent) showResponse(path, response.status, body, failed);
+    if (!silent) logEvent(`${label}${failed ? "返回错误" : "完成"}`, `HTTP ${response.status}${businessError ? " · 业务失败" : ""}`, failed);
+    if (!response.ok) throw new Error(errorMessage(body, response.status));
     return body;
   } catch (error) {
     if (!silent) { showResponse(path, 0, { error: error.message || "网络请求失败" }, true); logEvent(`${label}失败`, error.message || "网络请求失败", true); }
@@ -61,6 +81,10 @@ function setFlow(current) {
   const labels = { order: "从工单开始", detection: "正在进行检测", result: "等待上传结果", push: "可以查询与回推" };
   $("#workflow-status").textContent = labels[current] || labels.order;
 }
+
+document.querySelectorAll("[data-step-link]").forEach((node) => {
+  node.addEventListener("click", () => setFlow(node.dataset.stepLink));
+});
 
 function updateSession(text, mode = "") {
   const node = $("#session-state");
@@ -121,8 +145,8 @@ async function detectionAction(action) {
     if (result.code === "0010") {
       updateSession(action === "start" ? "检测中，已记录开始时间" : "检测已结束，已记录结束时间", action === "start" ? "recording" : "stopped");
       setFlow(action === "start" ? "detection" : "result");
-    } else updateSession(result.message || "业务处理失败");
-  } catch { updateSession("调用失败，请查看最近响应"); }
+    } else updateSession(result.message || "业务处理失败", "error");
+  } catch { updateSession("调用失败，请查看最近响应", "error"); }
 }
 
 $("#start-test").addEventListener("click", () => detectionAction("start"));
