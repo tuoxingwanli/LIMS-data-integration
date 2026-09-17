@@ -53,7 +53,7 @@ def test_frontend_static_assets_are_served(tmp_path):
         page = client.get("/")
         assert page.status_code == 200
         assert "text/html" in page.headers["content-type"]
-        assert "LIMS · SCADA 对接控制台" in page.text
+        assert "LIMS / SCADA 设备对接联调" in page.text
         assert client.get("/styles.css").status_code == 200
         assert client.get("/app.js").status_code == 200
 

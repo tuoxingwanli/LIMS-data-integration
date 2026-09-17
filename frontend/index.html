@@ -3,138 +3,113 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b1f3a" />
-    <title>LIMS · SCADA 对接控制台</title>
+    <meta name="theme-color" content="#173e73" />
+    <title>LIMS / SCADA 设备对接联调</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-block">
-          <div class="brand-mark"><span></span><span></span><span></span></div>
-          <div>
-            <p class="eyebrow">INTEGRATION CONSOLE</p>
-            <h1>LIMS · SCADA 对接控制台</h1>
-          </div>
-        </div>
-        <div class="topbar-meta">
-          <span class="environment-chip"><i></i> 本地联调环境</span>
-          <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">Swagger API <span>↗</span></a>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="/" aria-label="返回联调首页">
+          <span class="brand-symbol"><i></i><i></i><i></i></span>
+          <span class="brand-name">LIMS / SCADA <small>设备对接联调</small></span>
+        </a>
+        <div class="header-tools">
+          <span class="server-state" id="server-state"><i id="health-dot"></i><span id="health-text">检查服务</span></span>
+          <a class="docs-button" href="/docs" target="_blank" rel="noreferrer">查看接口文档 <span>↗</span></a>
         </div>
       </header>
 
-      <main class="page-content">
-        <section class="hero">
+      <main class="page">
+        <section class="intro-row">
           <div>
-            <p class="eyebrow accent">LIMS / SCADA DATA BRIDGE</p>
-            <h2>把工单、检测过程与实验结果<br /><em>串成一条可验证的链路</em></h2>
-            <p class="hero-copy">用于现场接口联调的轻量控制台。每次操作都会留下响应和事件记录，方便快速确认协议、状态与回推结果。</p>
+            <p class="overline">LIMS DATA INTEGRATION</p>
+            <h1>设备对接联调</h1>
+            <p class="intro-text">按照实际业务顺序，完成工单、检测、结果和回推的接口验证。</p>
           </div>
-          <div class="hero-status">
-            <div class="health-card" id="health-card">
-              <div class="status-icon"><span></span></div>
-              <div>
-                <span class="label">服务状态</span>
-                <strong id="health-text">检查中</strong>
-                <small id="health-time">正在连接 /health</small>
-              </div>
-              <button class="icon-button" id="refresh-health" type="button" aria-label="刷新服务状态">↻</button>
-            </div>
-            <div class="capture-note"><span class="dot blue"></span><span>采集模式</span><strong>Mock</strong><small>不生成真实媒体文件</small></div>
+          <div class="intro-facts">
+            <div><span>服务</span><strong>FastAPI</strong></div>
+            <div><span>存储</span><strong>SQLite</strong></div>
+            <div><span>采集</span><strong class="mock-text">Mock</strong></div>
           </div>
         </section>
 
-        <section class="metric-row" aria-label="系统能力概览">
-          <div class="metric"><span class="metric-index">01</span><div><strong>LIMS</strong><small>工单接收 · 结果回推</small></div></div>
-          <div class="metric"><span class="metric-index">02</span><div><strong>SCADA</strong><small>工单获取 · 结果上传</small></div></div>
-          <div class="metric"><span class="metric-index">03</span><div><strong>设备检测</strong><small>/startTest · /stopTest</small></div></div>
-          <div class="metric"><span class="metric-index">04</span><div><strong>SQLite</strong><small>会话与结果可追溯</small></div></div>
+        <section class="workflow-strip" aria-label="联调流程">
+          <div class="workflow-label"><span>当前流程</span><strong id="workflow-status">从工单开始</strong></div>
+          <ol class="workflow-list" id="flow-list">
+            <li class="current" data-flow="order"><b>1</b><span>工单</span></li>
+            <li data-flow="detection"><b>2</b><span>检测</span></li>
+            <li data-flow="result"><b>3</b><span>结果</span></li>
+            <li data-flow="push"><b>4</b><span>回推</span></li>
+          </ol>
         </section>
 
-        <div class="section-heading">
-          <div><span class="section-kicker">LIVE WORKSPACE</span><h3>联调工作台</h3></div>
-          <div class="current-context"><span class="dot green"></span><span>接口服务在线即可开始演示</span></div>
-        </div>
-
-        <div class="workspace-grid">
-          <aside class="control-column">
-            <section class="panel control-panel">
-              <div class="panel-heading"><div><span class="step-no">01</span><h4>接收 LIMS 工单</h4></div><span class="method-tag post">POST</span></div>
-              <p class="panel-desc">创建工单并保存样品、检测项目。相同工单号重复提交时保持幂等。</p>
-              <form id="work-order-form" class="form-grid">
-                <label>工单号<input id="order-no" name="orderNo" value="WO-DEMO-001" required /></label>
-                <label>实验人员<input id="experimenter-id" name="experimenterId" value="EMP001" required /></label>
-                <label class="span-2">项目名称<input id="project-name" name="projectName" value="设备联调演示" /></label>
-                <label>样品编号<input id="sample-no" name="sampleNo" value="S-DEMO-001" required /></label>
-                <label>样品名称<input id="sample-name" name="sampleName" value="联调样品" /></label>
-                <label class="span-2">检测项目<input id="test-items" name="testItems" value="Fe, C, Mn" /></label>
-                <button class="primary-button span-2" type="submit">创建工单 <span>→</span></button>
-              </form>
-            </section>
-
-            <section class="panel control-panel compact-panel">
-              <div class="panel-heading"><div><span class="step-no">02</span><h4>SCADA 工单查询</h4></div><span class="method-tag get">GET</span></div>
-              <form id="scada-form" class="inline-form"><input id="query-experimenter" value="EMP001" aria-label="实验人员编号" /><button class="secondary-button" type="submit">查询</button></form>
-              <div class="mini-result" id="work-order-list"><span class="muted">查询结果会显示在这里</span></div>
-            </section>
-
-            <section class="panel control-panel compact-panel">
-              <div class="panel-heading"><div><span class="step-no">03</span><h4>设备检测通知</h4></div><span class="method-tag post">POST</span></div>
-              <p class="panel-desc">设备以盲样号通知检测开始和结束，服务记录 UTC 时间与会话状态。</p>
-              <form id="detection-form" class="form-grid detection-form">
-                <label class="span-2">盲样号<input id="blind-sample-no" value="BLIND-DEMO-001" required /></label>
-                <button class="secondary-button" id="start-test" type="button">开始检测</button>
-                <button class="outline-button" id="stop-test" type="button">结束检测</button>
-              </form>
-              <div class="session-state" id="session-state"><span class="state-dot"></span><span>尚未开始检测</span></div>
-            </section>
+        <section class="workbench">
+          <aside class="step-sidebar">
+            <p class="overline">操作步骤</p>
+            <h2>按顺序验证</h2>
+            <nav class="step-nav" aria-label="操作步骤">
+              <a class="active" data-step-link="order" href="#order-section"><span>01</span><div><strong>接收工单</strong><small>LIMS 下发</small></div></a>
+              <a data-step-link="detection" href="#detection-section"><span>02</span><div><strong>通知检测</strong><small>设备客户端</small></div></a>
+              <a data-step-link="result" href="#result-section"><span>03</span><div><strong>上传结果</strong><small>SCADA 上报</small></div></a>
+              <a data-step-link="push" href="#response-section"><span>04</span><div><strong>查询与回推</strong><small>返回 LIMS</small></div></a>
+            </nav>
+            <div class="sidebar-note"><strong>当前环境</strong><p>本地联调</p><small>Mock 采集器只验证接口和状态，不创建视频、截图文件。</small></div>
           </aside>
 
-          <section class="main-column">
-            <section class="panel flow-panel">
-              <div class="panel-heading"><div><span class="section-kicker">INTEGRATION FLOW</span><h4>当前链路</h4></div><span class="flow-caption">实时联调视图</span></div>
-              <div class="flow-track" id="flow-track">
-                <div class="flow-node active" data-flow="order"><span class="flow-icon">01</span><strong>工单</strong><small>LIMS → 服务</small></div>
-                <span class="flow-line"></span>
-                <div class="flow-node" data-flow="detection"><span class="flow-icon">02</span><strong>检测</strong><small>设备通知</small></div>
-                <span class="flow-line"></span>
-                <div class="flow-node" data-flow="result"><span class="flow-icon">03</span><strong>结果</strong><small>SCADA 上传</small></div>
-                <span class="flow-line"></span>
-                <div class="flow-node" data-flow="push"><span class="flow-icon">04</span><strong>回推</strong><small>返回 LIMS</small></div>
+          <div class="operation-area">
+            <section class="operation-section" id="order-section">
+              <div class="section-title"><div><span class="section-number">01</span><h2>接收工单</h2><p>LIMS 将工单写入中转服务，SCADA 可按实验人员查询。</p></div><span class="api-label">POST /api/work-orders</span></div>
+              <form id="work-order-form" class="form-grid">
+                <label>工单号<input id="order-no" value="WO-DEMO-001" required /></label>
+                <label>实验人员<input id="experimenter-id" value="EMP001" required /></label>
+                <label class="wide">项目名称<input id="project-name" value="设备联调演示" /></label>
+                <label>样品编号<input id="sample-no" value="S-DEMO-001" required /></label>
+                <label>样品名称<input id="sample-name" value="联调样品" /></label>
+                <label class="wide">检测项目<input id="test-items" value="Fe, C, Mn" /></label>
+                <div class="form-actions wide"><button class="blue-button" type="submit">创建工单</button><button class="plain-button" id="query-scada" type="button">查询 SCADA 工单</button><span class="api-label inline-api">GET /api/scada/work-orders</span></div>
+              </form>
+              <div class="inline-result" id="work-order-list"><span>查询结果显示在这里</span></div>
+            </section>
+
+            <section class="operation-section" id="detection-section">
+              <div class="section-title"><div><span class="section-number">02</span><h2>通知检测</h2><p>检测客户端使用盲样号通知开始和结束，服务记录会话时间。</p></div><span class="api-label">POST /startTest · /stopTest</span></div>
+              <div class="detection-row">
+                <label>盲样号<input id="blind-sample-no" value="BLIND-DEMO-001" required /></label>
+                <div class="form-actions detection-actions"><button class="blue-button" id="start-test" type="button">开始检测</button><button class="plain-button" id="stop-test" type="button">结束检测</button></div>
+                <div class="session-state" id="session-state"><i></i><span>尚未开始检测</span></div>
               </div>
             </section>
 
-            <div class="split-panels">
-              <section class="panel control-panel">
-                <div class="panel-heading"><div><span class="step-no">04</span><h4>实验结果</h4></div><span class="method-tag post">POST</span></div>
-                <p class="panel-desc">上传结果后可查询当前工单状态，并将已完成结果回推到 LIMS。</p>
-                <form id="result-form" class="form-grid">
-                  <label>工单号<input id="result-order-no" value="WO-DEMO-001" required /></label>
-                  <label>样品编号<input id="result-sample-no" value="S-DEMO-001" required /></label>
-                  <label>检测项目<input id="result-item" value="Fe" required /></label>
-                  <label>结果值<input id="result-value" value="96.2" required /></label>
-                  <label>单位<input id="result-unit" value="%" /></label>
-                  <label class="check-label"><input id="result-finished" type="checkbox" checked /> <span>标记为已完成</span></label>
-                  <button class="primary-button span-2" type="submit">上传实验结果 <span>→</span></button>
-                </form>
-                <div class="result-actions"><button class="text-button" id="query-results" type="button">查询结果</button><button class="text-button" id="push-results" type="button">回推 LIMS <span>↗</span></button></div>
-              </section>
-
-              <section class="panel response-panel">
-                <div class="panel-heading"><div><span class="section-kicker">API RESPONSE</span><h4>最近响应</h4></div><span class="response-code" id="response-code">READY</span></div>
-                <div class="response-viewer" id="response-viewer"><span class="json-muted">等待操作…</span></div>
-                <div class="response-footer"><span id="response-path">尚未调用接口</span><button class="text-button" id="copy-response" type="button">复制 JSON</button></div>
-              </section>
-            </div>
-
-            <section class="panel log-panel">
-              <div class="panel-heading"><div><span class="section-kicker">ACTIVITY LOG</span><h4>操作记录</h4></div><button class="text-button" id="clear-log" type="button">清空记录</button></div>
-              <div class="activity-list" id="activity-list"><div class="activity empty"><span class="activity-mark"></span><div><strong>联调控制台已就绪</strong><small>等待第一次接口操作</small></div><time>刚刚</time></div></div>
+            <section class="operation-section" id="result-section">
+              <div class="section-title"><div><span class="section-number">03</span><h2>上传结果</h2><p>SCADA 上传结果后，服务按工单、样品和检测项目保存。</p></div><span class="api-label">POST /api/scada/results</span></div>
+              <form id="result-form" class="result-grid">
+                <label>工单号<input id="result-order-no" value="WO-DEMO-001" required /></label>
+                <label>样品编号<input id="result-sample-no" value="S-DEMO-001" required /></label>
+                <label>检测项目<input id="result-item" value="Fe" required /></label>
+                <label>结果值<input id="result-value" value="96.2" required /></label>
+                <label>单位<input id="result-unit" value="%" /></label>
+                <label class="finish-check"><input id="result-finished" type="checkbox" checked /><span>本次上传后完成工单</span></label>
+                <div class="form-actions wide"><button class="blue-button" type="submit">上传实验结果</button><button class="plain-button" id="query-results" type="button">查询结果</button><button class="plain-button" id="push-results" type="button">回推 LIMS</button></div>
+              </form>
             </section>
+          </div>
+        </section>
+
+        <section class="lower-area" id="response-section">
+          <section class="response-section">
+            <div class="lower-title"><div><p class="overline">最近响应</p><h2>API 返回</h2></div><span id="response-code" class="http-code">READY</span></div>
+            <pre class="response-viewer" id="response-viewer"><code>等待调用接口…</code></pre>
+            <div class="response-footer"><span id="response-path">尚未调用接口</span><button class="plain-button" id="copy-response" type="button">复制 JSON</button></div>
           </section>
-        </div>
+          <section class="activity-section">
+            <div class="lower-title"><div><p class="overline">操作记录</p><h2>联调日志</h2></div><button class="plain-button" id="clear-log" type="button">清空</button></div>
+            <div class="activity-list" id="activity-list"><div class="activity empty"><i></i><div><strong>控制台已准备</strong><small>等待第一次接口调用</small></div><time>刚刚</time></div></div>
+          </section>
+        </section>
       </main>
-      <footer class="footer"><span>LIMS DATA INTEGRATION DEMO</span><span>FastAPI · SQLite · JSON</span></footer>
+
+      <footer class="site-footer"><span>LIMS / SCADA 设备对接联调</span><span>FastAPI · SQLite · JSON</span></footer>
     </div>
     <script src="/app.js" defer></script>
   </body>

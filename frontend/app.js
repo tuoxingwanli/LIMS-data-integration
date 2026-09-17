@@ -1,13 +1,13 @@
 const $ = (selector) => document.querySelector(selector);
 
-const state = {
-  lastOrderNo: "WO-DEMO-001",
-  lastBlindSampleNo: "BLIND-DEMO-001",
-  lastResponse: null,
-};
+const state = { lastOrderNo: "WO-DEMO-001", lastResponse: null };
 
 function now() {
   return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
 }
 
 function pretty(value) {
@@ -16,77 +16,68 @@ function pretty(value) {
 
 function logEvent(title, detail, isError = false) {
   const list = $("#activity-list");
-  const empty = list.querySelector(".empty");
-  if (empty) empty.remove();
+  list.querySelector(".empty")?.remove();
   const item = document.createElement("div");
   item.className = `activity${isError ? " error" : ""}`;
-  item.innerHTML = `<span class="activity-mark"></span><div><strong>${title}</strong><small>${detail}</small></div><time>${now()}</time>`;
+  item.innerHTML = `<i></i><div><strong>${escapeHTML(title)}</strong><small>${escapeHTML(detail)}</small></div><time>${now()}</time>`;
   list.prepend(item);
 }
 
 function showResponse(path, status, body, isError = false) {
   state.lastResponse = body;
   const viewer = $("#response-viewer");
-  viewer.className = `response-viewer ${isError ? "error" : "success"}`;
+  viewer.className = `response-viewer${isError ? " error" : ""}`;
   viewer.textContent = pretty(body);
   $("#response-code").textContent = status ? `HTTP ${status}` : "ERROR";
-  $("#response-code").style.color = isError ? "#c56a48" : "var(--green)";
-  $("#response-code").style.background = isError ? "#fff1eb" : "#ebf8f2";
+  $("#response-code").style.color = isError ? "#cf654a" : "var(--green)";
   $("#response-path").textContent = path;
 }
 
-async function request(path, options = {}, label = path) {
-  logEvent(`调用 ${label}`, `${options.method || "GET"} ${path}`);
+async function request(path, options = {}, label = path, silent = false) {
+  if (!silent) logEvent(`调用 ${label}`, `${options.method || "GET"} ${path}`);
   try {
-    const response = await fetch(path, { headers: { "Content-Type": "application/json", ...(options.headers || {}) }, ...options });
+    const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}) } });
     const text = await response.text();
     let body;
     try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }
-    showResponse(path, response.status, body, !response.ok);
-    logEvent(`${label} ${response.ok ? "完成" : "返回错误"}`, `HTTP ${response.status}`, !response.ok);
+    if (!silent) showResponse(path, response.status, body, !response.ok);
+    if (!silent) logEvent(`${label}${response.ok ? "完成" : "返回错误"}`, `HTTP ${response.status}`, !response.ok);
     if (!response.ok) throw new Error(body?.detail || body?.message || `HTTP ${response.status}`);
     return body;
   } catch (error) {
-    const body = { error: error.message || "网络请求失败" };
-    showResponse(path, 0, body, true);
-    logEvent(`${label} 失败`, body.error, true);
+    if (!silent) { showResponse(path, 0, { error: error.message || "网络请求失败" }, true); logEvent(`${label}失败`, error.message || "网络请求失败", true); }
     throw error;
   }
 }
 
-function setFlow(name) {
+function setFlow(current) {
   const names = ["order", "detection", "result", "push"];
-  const activeIndex = names.indexOf(name);
-  document.querySelectorAll(".flow-node").forEach((node, index) => {
-    node.classList.toggle("active", index === activeIndex);
-    node.classList.toggle("done", index < activeIndex);
+  const activeIndex = names.indexOf(current);
+  document.querySelectorAll("#flow-list li").forEach((node, index) => {
+    node.classList.toggle("current", index === activeIndex);
+    node.classList.toggle("complete", index < activeIndex);
   });
-  document.querySelectorAll(".flow-line").forEach((line, index) => line.classList.toggle("done", index < activeIndex));
+  document.querySelectorAll("[data-step-link]").forEach((node) => node.classList.toggle("active", node.dataset.stepLink === current));
+  const labels = { order: "从工单开始", detection: "正在进行检测", result: "等待上传结果", push: "可以查询与回推" };
+  $("#workflow-status").textContent = labels[current] || labels.order;
 }
 
 function updateSession(text, mode = "") {
   const node = $("#session-state");
   node.className = `session-state ${mode}`;
-  node.innerHTML = `<span class="state-dot"></span><span>${text}</span>`;
+  node.innerHTML = `<i></i><span>${escapeHTML(text)}</span>`;
 }
 
 async function checkHealth() {
-  const card = $("#health-card");
+  const stateNode = $("#server-state");
   const text = $("#health-text");
-  const time = $("#health-time");
-  card.classList.remove("online");
-  text.textContent = "检查中";
-  time.textContent = "正在连接 /health";
+  stateNode.className = "server-state";
+  text.textContent = "检查服务";
   try {
-    const result = await request("/health", {}, "服务健康检查");
-    text.textContent = result.status === "ok" ? "服务在线" : "服务响应异常";
-    time.textContent = `最近检查 ${now()}`;
-    $(".status-icon span").style.background = result.status === "ok" ? "var(--green)" : "var(--orange)";
-  } catch {
-    text.textContent = "服务不可用";
-    time.textContent = "请确认 Uvicorn 已启动";
-    $(".status-icon span").style.background = "#dc704e";
-  }
+    const result = await request("/health", {}, "服务健康检查", true);
+    stateNode.classList.add(result.status === "ok" ? "online" : "error");
+    text.textContent = result.status === "ok" ? "服务在线" : "服务异常";
+  } catch { stateNode.classList.add("error"); text.textContent = "服务不可用"; }
 }
 
 function workOrderPayload() {
@@ -99,8 +90,6 @@ function workOrderPayload() {
   };
 }
 
-$("#refresh-health").addEventListener("click", checkHealth);
-
 $("#work-order-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const payload = workOrderPayload();
@@ -110,33 +99,30 @@ $("#work-order-form").addEventListener("submit", async (event) => {
     $("#result-order-no").value = payload.order_no;
     $("#result-sample-no").value = payload.samples[0].sample_no;
     setFlow("detection");
-    logEvent(result.duplicate ? "工单已存在" : "工单保存成功", payload.order_no);
-  } catch { /* request 已写入响应和日志 */ }
+    logEvent(result.duplicate ? "工单已经存在" : "工单保存成功", payload.order_no);
+  } catch { /* request 已记录响应 */ }
 });
 
-$("#scada-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const id = encodeURIComponent($("#query-experimenter").value.trim());
+$("#query-scada").addEventListener("click", async () => {
+  const experimenter = encodeURIComponent($("#experimenter-id").value.trim());
   try {
-    const result = await request(`/api/scada/work-orders?experimenter_id=${id}`, {}, "查询 SCADA 工单");
-    const list = $("#work-order-list");
-    list.innerHTML = result.work_orders?.length
-      ? result.work_orders.map((order) => `<strong>${order.order_no}</strong> · ${order.status} · ${order.samples.length} 个样品`).join("<br />")
-      : `<span class="muted">暂无待处理工单（共 ${result.count || 0} 条）</span>`;
-  } catch { $("#work-order-list").innerHTML = `<span class="muted">查询失败，请查看最近响应</span>`; }
+    const result = await request(`/api/scada/work-orders?experimenter_id=${experimenter}`, {}, "查询 SCADA 工单");
+    $("#work-order-list").innerHTML = result.work_orders?.length
+      ? result.work_orders.map((order) => `<strong>${escapeHTML(order.order_no)}</strong> · ${escapeHTML(order.status)} · ${order.samples.length} 个样品`).join("<br />")
+      : `<span>暂无待处理工单（共 ${result.count || 0} 条）</span>`;
+  } catch { $("#work-order-list").innerHTML = "<span>查询失败，请查看最近响应</span>"; }
 });
 
 async function detectionAction(action) {
   const blindSampleNo = $("#blind-sample-no").value.trim();
-  state.lastBlindSampleNo = blindSampleNo;
   const endpoint = action === "start" ? "/startTest" : "/stopTest";
   try {
     const result = await request(endpoint, { method: "POST", body: JSON.stringify({ blindSampleNo }) }, action === "start" ? "开始检测" : "结束检测");
     if (result.code === "0010") {
-      updateSession(action === "start" ? "检测中 · 已记录开始时间" : "检测已结束 · 已记录结束时间", action === "start" ? "recording" : "stopped");
+      updateSession(action === "start" ? "检测中，已记录开始时间" : "检测已结束，已记录结束时间", action === "start" ? "recording" : "stopped");
       setFlow(action === "start" ? "detection" : "result");
     } else updateSession(result.message || "业务处理失败");
-  } catch { updateSession("接口调用失败，请查看最近响应"); }
+  } catch { updateSession("调用失败，请查看最近响应"); }
 }
 
 $("#start-test").addEventListener("click", () => detectionAction("start"));
@@ -145,26 +131,26 @@ $("#stop-test").addEventListener("click", () => detectionAction("stop"));
 $("#result-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const rawValue = $("#result-value").value.trim();
-  const numberValue = Number(rawValue);
+  const numericValue = Number(rawValue);
   const payload = {
     order_no: $("#result-order-no").value.trim(),
-    results: [{ sample_no: $("#result-sample-no").value.trim(), test_item: $("#result-item").value.trim(), value: rawValue !== "" && Number.isFinite(numberValue) ? numberValue : rawValue, unit: $("#result-unit").value.trim() || null }],
+    results: [{ sample_no: $("#result-sample-no").value.trim(), test_item: $("#result-item").value.trim(), value: rawValue !== "" && Number.isFinite(numericValue) ? numericValue : rawValue, unit: $("#result-unit").value.trim() || null }],
     finished: $("#result-finished").checked,
   };
   try { await request("/api/scada/results", { method: "POST", body: JSON.stringify(payload) }, "上传实验结果"); setFlow("push"); }
-  catch { /* request 已写入响应和日志 */ }
+  catch { /* request 已记录响应 */ }
 });
 
 $("#query-results").addEventListener("click", async () => {
   const orderNo = $("#result-order-no").value.trim() || state.lastOrderNo;
   try { await request(`/api/work-orders/${encodeURIComponent(orderNo)}/results`, {}, "查询实验结果"); }
-  catch { /* request 已写入响应和日志 */ }
+  catch { /* request 已记录响应 */ }
 });
 
 $("#push-results").addEventListener("click", async () => {
   const orderNo = $("#result-order-no").value.trim() || state.lastOrderNo;
   try { await request(`/api/work-orders/${encodeURIComponent(orderNo)}/push-to-lims`, { method: "POST" }, "回推 LIMS"); setFlow("push"); }
-  catch { /* request 已写入响应和日志 */ }
+  catch { /* request 已记录响应 */ }
 });
 
 $("#copy-response").addEventListener("click", async () => {
@@ -174,7 +160,7 @@ $("#copy-response").addEventListener("click", async () => {
 });
 
 $("#clear-log").addEventListener("click", () => {
-  $("#activity-list").innerHTML = `<div class="activity empty"><span class="activity-mark"></span><div><strong>操作记录已清空</strong><small>等待下一次接口操作</small></div><time>${now()}</time></div>`;
+  $("#activity-list").innerHTML = `<div class="activity empty"><i></i><div><strong>操作记录已清空</strong><small>等待下一次接口调用</small></div><time>${now()}</time></div>`;
 });
 
 checkHealth();
