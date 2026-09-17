@@ -1,93 +1,140 @@
-# LIMS 数据对接 Demo
+# LIMS 设备数据对接服务
 
-一个基于 **FastAPI + SQLite + JSON** 的 LIMS / SCADA 数据对接原型，用于快速验证“工单下发、实验执行、结果回传”的完整业务闭环。
+这是一个基于 FastAPI、SQLite 和 JSON 的 LIMS/SCADA 对接原型，用于验证工单下发、检测客户端通知、实验结果上传和结果回推的完整链路。
 
 ## 功能概览
 
+- 接收 LIMS 工单，并按 `order_no` 幂等保存。
+- 按实验人员查询 SCADA 待处理工单。
+- 支持分批上传实验结果，并按工单、样品和检测项目 UPSERT。
+- 将完成的实验结果回推到配置的 LIMS 地址。
+- 按对方接口文档提供 `/startTest` 和 `/stopTest`。
+- 保存检测会话的盲样号、开始时间、结束时间、状态和可选样品关联。
+- 使用可替换的录屏/截图适配器；默认 Mock 适配器不创建真实媒体文件。
+- 自动生成 Swagger 和 OpenAPI 文档。
+
+## 业务流程
+
 ```text
-第三方 LIMS 下发工单
-        ↓
-本系统保存 work_orders / samples
-        ↓
-SCADA 按实验人员 ID 获取工单
-        ↓
-SCADA 上传检测结果
-        ↓
-本系统保存 test_results
-        ↓
-本系统回推结果至第三方 LIMS
+LIMS 下发工单
+    -> 本服务保存工单和样品
+    -> SCADA 获取工单
+    -> 检测客户端调用 /startTest
+    -> 采集适配器开始录制并保存开始时间
+    -> SCADA 上传实验结果
+    -> 检测客户端调用 /stopTest
+    -> 采集适配器结束录制、截图并保存结束时间
+    -> 本服务将结果回推 LIMS
 ```
 
-- 工单按 `order_no` 幂等接收，避免重复下发造成重复数据。
-- 一个工单可包含多个样品和多个检测项目。
-- SCADA 可分批上传结果；同一“工单 + 样品 + 检测项目”重复上传时自动更新。
-- 结果成功回推 LIMS 后，工单状态更新为 `pushed`。
-- 内置 Mock LIMS，单机即可完成全流程联调。
-- 提供自动生成的 Swagger 接口页面。
+## 项目结构
 
-## 技术栈
-
-| 类型 | 选型 |
-| --- | --- |
-| Web 框架 | FastAPI |
-| 数据库 | SQLite |
-| HTTP 客户端 | httpx |
-| 接口格式 | JSON / REST |
-
-项目刻意不引入 ORM、Redis、消息队列、Docker、微服务或复杂权限，便于第一阶段快速确认接口协议。
+```text
+.
+├── app/
+│   ├── api/routes/          # HTTP 路由
+│   ├── core/                # 配置和时间工具
+│   ├── db/                  # SQLite 连接和建表
+│   ├── integrations/        # LIMS、录屏和截图适配器
+│   ├── repositories/        # 数据持久化
+│   ├── schemas/             # Pydantic 请求响应模型
+│   └── services/            # 工单和检测会话业务逻辑
+├── tests/                   # 接口和业务回归测试
+├── main.py                  # 兼容启动入口
+├── requirements.txt         # 运行依赖
+└── requirements-dev.txt     # 测试依赖
+```
 
 ## 快速启动
 
-要求：Python 3.10 或以上。
+要求 Python 3.10 或更高版本。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 python -m uvicorn main:app --reload
 ```
 
-启动成功后访问：
+启动后访问：
 
 - Swagger：<http://127.0.0.1:8000/docs>
+- OpenAPI：<http://127.0.0.1:8000/openapi.json>
 - 健康检查：<http://127.0.0.1:8000/health>
 
-首次启动会自动生成本地数据库 `lims_demo.db`。
+首次启动会在 `LIMS_DB_PATH` 指定的位置创建 SQLite 数据库，默认是项目根目录下的 `lims_demo.db`。
 
-## 核心接口
+## 接口一览
 
-| 调用方 | 方法 | 路径 | 说明 |
+| 调用方 | 方法 | 路径 | 用途 |
 | --- | --- | --- | --- |
-| LIMS | `POST` | `/api/work-orders` | 下发工单 |
-| SCADA | `GET` | `/api/scada/work-orders?experimenter_id=EMP001` | 获取待处理工单 |
-| SCADA | `POST` | `/api/scada/results` | 上传或更新检测结果 |
-| 联调 | `GET` | `/api/work-orders/{order_no}/results` | 查询工单结果 |
-| 本系统 | `POST` | `/api/work-orders/{order_no}/push-to-lims` | 回推结果至 LIMS |
+| 系统 | GET | `/health` | 健康检查 |
+| LIMS | POST | `/api/work-orders` | 下发工单 |
+| SCADA | GET | `/api/scada/work-orders?experimenter_id=EMP001` | 获取待处理工单 |
+| SCADA | POST | `/api/scada/results` | 上传或更新实验结果 |
+| 检测客户端 | POST | `/startTest` | 开始检测通知 |
+| 检测客户端 | POST | `/stopTest` | 结束检测通知 |
+| 联调 | GET | `/api/work-orders/{order_no}/results` | 查询实验结果 |
+| 本服务 | POST | `/api/work-orders/{order_no}/push-to-lims` | 回推 LIMS |
+| 本地 Mock | POST | `/mock/lims/results` | 模拟 LIMS 接收结果 |
 
-## 最小联调示例
+## 检测客户端接口
 
-### 1. LIMS 下发工单
+请求头使用 `Content-Type: application/json`，请求体为：
 
 ```json
 {
-  "order_no": "WO20260910001",
+  "blindSampleNo": "92fbbc8e88c949158fade880b8d69b27"
+}
+```
+
+开始检测：
+
+```text
+POST /startTest
+```
+
+结束检测：
+
+```text
+POST /stopTest
+```
+
+成功响应：
+
+```json
+{
+  "code": "0010",
+  "response": null,
+  "message": "成功"
+}
+```
+
+业务失败仍返回 HTTP 200，响应中的 `code` 为 `500`。缺少字段、字段为空或增加未定义字段时，返回 HTTP 422。
+
+同一盲样号重复开始不会重复创建活动会话；重复结束也按幂等成功处理。盲样号可以不属于现有工单，若能匹配 `samples.sample_no` 则会自动建立关联。
+
+## 工单和结果示例
+
+下发工单：
+
+```json
+{
+  "order_no": "WO20260917001",
   "experimenter_id": "EMP001",
   "project_name": "钢材成分检测",
   "samples": [
-    {"sample_no": "S001", "sample_name": "钢材样品1"},
-    {"sample_no": "S002", "sample_name": "钢材样品2"}
+    {"sample_no": "S001", "sample_name": "钢材样品1"}
   ],
   "test_items": ["Fe", "C", "Mn"]
 }
 ```
 
-调用：`POST /api/work-orders`
-
-### 2. SCADA 上传结果
+上传结果：
 
 ```json
 {
-  "order_no": "WO20260910001",
+  "order_no": "WO20260917001",
   "results": [
     {"sample_no": "S001", "test_item": "Fe", "value": 96.2, "unit": "%"},
     {"sample_no": "S001", "test_item": "C", "value": 0.42, "unit": "%"}
@@ -96,30 +143,34 @@ python -m uvicorn main:app --reload
 }
 ```
 
-调用：`POST /api/scada/results`
-
-### 3. 回推 LIMS
+回推结果：
 
 ```text
-POST /api/work-orders/WO20260910001/push-to-lims
+POST /api/work-orders/WO20260917001/push-to-lims
 ```
-
-默认会回推到本地 Mock 接口；服务终端将打印其收到的 JSON。
 
 ## 配置
 
-| 环境变量 | 默认值 | 用途 |
+| 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `LIMS_DB_PATH` | `lims_demo.db` | SQLite 数据库文件位置 |
-| `LIMS_RESULT_URL` | `http://127.0.0.1:8000/mock/lims/results` | 第三方 LIMS 结果接收地址 |
+| `LIMS_DB_PATH` | `lims_demo.db` | SQLite 数据库路径 |
+| `LIMS_RESULT_URL` | `http://127.0.0.1:8000/mock/lims/results` | LIMS 结果接收地址 |
+| `CAPTURE_BACKEND` | `mock` | 录屏/截图适配器，当前支持 `mock` |
 
-正式联调前请将 `LIMS_RESULT_URL` 改为对方正式接口，并补充双方确认的鉴权、字段映射、超时与重试协议。
+## 测试
+
+```powershell
+python -m pytest
+python -m compileall app main.py
+python -m pip check
+```
 
 ## 文档
 
-- [项目架构分析](./项目架构分析.md)
+- [主要接口和功能](./主要接口和功能.md)
 - [启动与使用手册](./启动与使用手册.md)
+- [项目架构分析](./项目架构分析.md)
 
-## 生产化前建议
+## 原型边界
 
-该项目是单机原型。正式使用前建议增加 API 鉴权、HTTPS、调用审计、失败重试、数据库备份和监控；当并发量或数据规模增长后，再迁移到 PostgreSQL 并拆分业务模块。
+当前实现用于接口联调，默认不会调用 Windows 录屏程序，也不会生成真实视频或截图。正式部署前应接入经过确认的采集程序，补充鉴权、HTTPS、结构化日志、失败重试、数据库备份和监控；并发量增大后再评估迁移 PostgreSQL 和 Outbox 任务模式。
