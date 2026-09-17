@@ -1,53 +1,23 @@
-# LIMS 设备数据对接服务
+# LIMS / SCADA 设备数据对接服务
 
-这是一个基于 FastAPI、SQLite 和 JSON 的 LIMS/SCADA 对接原型，用于验证工单下发、检测客户端通知、实验结果上传和结果回推的完整链路。
+这是一个用于接口联调和方案展示的 LIMS / SCADA 中转服务。项目接收 LIMS 工单，向 SCADA 提供待处理工单，接收实验结果，接收检测客户端的开始/结束通知，并将完成结果回推到 LIMS。
+
+项目同时提供一个由 FastAPI 直接托管的网页联调控制台，启动服务后访问 <http://127.0.0.1:8000/> 即可进行可视化演示。
 
 ## 功能概览
 
-- 接收 LIMS 工单，并按 `order_no` 幂等保存。
-- 按实验人员查询 SCADA 待处理工单。
-- 支持分批上传实验结果，并按工单、样品和检测项目 UPSERT。
-- 将完成的实验结果回推到配置的 LIMS 地址。
-- 按对方接口文档提供 `/startTest` 和 `/stopTest`。
-- 保存检测会话的盲样号、开始时间、结束时间、状态和可选样品关联。
-- 使用可替换的录屏/截图适配器；默认 Mock 适配器不创建真实媒体文件。
-- 自动生成 Swagger 和 OpenAPI 文档。
-
-## 业务流程
-
-```text
-LIMS 下发工单
-    -> 本服务保存工单和样品
-    -> SCADA 获取工单
-    -> 检测客户端调用 /startTest
-    -> 采集适配器开始录制并保存开始时间
-    -> SCADA 上传实验结果
-    -> 检测客户端调用 /stopTest
-    -> 采集适配器结束录制、截图并保存结束时间
-    -> 本服务将结果回推 LIMS
-```
-
-## 项目结构
-
-```text
-.
-├── app/
-│   ├── api/routes/          # HTTP 路由
-│   ├── core/                # 配置和时间工具
-│   ├── db/                  # SQLite 连接和建表
-│   ├── integrations/        # LIMS、录屏和截图适配器
-│   ├── repositories/        # 数据持久化
-│   ├── schemas/             # Pydantic 请求响应模型
-│   └── services/            # 工单和检测会话业务逻辑
-├── tests/                   # 接口和业务回归测试
-├── main.py                  # 兼容启动入口
-├── requirements.txt         # 运行依赖
-└── requirements-dev.txt     # 测试依赖
-```
+- LIMS 工单接收与按 `order_no` 幂等保存
+- SCADA 工单查询和实验结果 UPSERT
+- 检测客户端 `/startTest`、`/stopTest` 设备通知
+- SQLite 记录检测会话、时间、状态和样品关联
+- 结果查询与 LIMS 回推，默认支持本地 Mock LIMS
+- 可替换的录屏/截图 `CaptureAdapter`，默认 Mock 不创建媒体文件
+- 原生 HTML/CSS/JavaScript 联调控制台，无前端构建步骤
+- Swagger 和 OpenAPI 自动接口说明
 
 ## 快速启动
 
-要求 Python 3.10 或更高版本。
+需要 Python 3.10 或更高版本：
 
 ```powershell
 python -m venv .venv
@@ -56,31 +26,40 @@ python -m pip install -r requirements-dev.txt
 python -m uvicorn main:app --reload
 ```
 
-启动后访问：
+启动后：
 
+- 网页控制台：<http://127.0.0.1:8000/>
 - Swagger：<http://127.0.0.1:8000/docs>
-- OpenAPI：<http://127.0.0.1:8000/openapi.json>
+- OpenAPI JSON：<http://127.0.0.1:8000/openapi.json>
 - 健康检查：<http://127.0.0.1:8000/health>
 
-首次启动会在 `LIMS_DB_PATH` 指定的位置创建 SQLite 数据库，默认是项目根目录下的 `lims_demo.db`。
+## 接口清单
 
-## 接口一览
-
-| 调用方 | 方法 | 路径 | 用途 |
+| 方法 | 路径 | 调用方 | 作用 |
 | --- | --- | --- | --- |
-| 系统 | GET | `/health` | 健康检查 |
-| LIMS | POST | `/api/work-orders` | 下发工单 |
-| SCADA | GET | `/api/scada/work-orders?experimenter_id=EMP001` | 获取待处理工单 |
-| SCADA | POST | `/api/scada/results` | 上传或更新实验结果 |
-| 检测客户端 | POST | `/startTest` | 开始检测通知 |
-| 检测客户端 | POST | `/stopTest` | 结束检测通知 |
-| 联调 | GET | `/api/work-orders/{order_no}/results` | 查询实验结果 |
-| 本服务 | POST | `/api/work-orders/{order_no}/push-to-lims` | 回推 LIMS |
-| 本地 Mock | POST | `/mock/lims/results` | 模拟 LIMS 接收结果 |
+| GET | `/health` | 系统 | 健康检查 |
+| POST | `/api/work-orders` | LIMS | 下发工单 |
+| GET | `/api/scada/work-orders?experimenter_id=EMP001` | SCADA | 查询待处理工单 |
+| POST | `/api/scada/results` | SCADA | 上传或更新实验结果 |
+| POST | `/startTest` | 检测客户端 | 通知开始检测 |
+| POST | `/stopTest` | 检测客户端 | 通知结束检测 |
+| GET | `/api/work-orders/{order_no}/results` | 联调页面 | 查询工单结果 |
+| POST | `/api/work-orders/{order_no}/push-to-lims` | 联调页面/服务 | 回推 LIMS |
+| POST | `/mock/lims/results` | 本地 Mock | 模拟 LIMS 接收回推结果 |
 
-## 检测客户端接口
+## 网页联调演示
 
-请求头使用 `Content-Type: application/json`，请求体为：
+打开根路径后，按照页面中的“工单 → 检测 → 结果 → 回推”流程操作：
+
+1. 在“接收 LIMS 工单”中创建工单。
+2. 查询 SCADA 工单，确认工单已经保存。
+3. 使用盲样号调用“开始检测”和“结束检测”。页面会显示会话状态，服务端 SQLite 会记录 UTC 时间。
+4. 上传实验结果，查询结果详情。
+5. 点击“回推 LIMS”，默认发送到本地 Mock 地址，并在响应面板查看 JSON。
+
+页面的服务状态、最近响应和操作日志只用于本地联调辅助。录屏和截图显示为 Mock 模式，不代表已经生成真实视频或图片。
+
+## 检测客户端请求示例
 
 ```json
 {
@@ -88,19 +67,7 @@ python -m uvicorn main:app --reload
 }
 ```
 
-开始检测：
-
-```text
-POST /startTest
-```
-
-结束检测：
-
-```text
-POST /stopTest
-```
-
-成功响应：
+成功和业务失败均使用 HTTP 200：
 
 ```json
 {
@@ -110,67 +77,40 @@ POST /stopTest
 }
 ```
 
-业务失败仍返回 HTTP 200，响应中的 `code` 为 `500`。缺少字段、字段为空或增加未定义字段时，返回 HTTP 422。
-
-同一盲样号重复开始不会重复创建活动会话；重复结束也按幂等成功处理。盲样号可以不属于现有工单，若能匹配 `samples.sample_no` 则会自动建立关联。
-
-## 工单和结果示例
-
-下发工单：
-
 ```json
 {
-  "order_no": "WO20260917001",
-  "experimenter_id": "EMP001",
-  "project_name": "钢材成分检测",
-  "samples": [
-    {"sample_no": "S001", "sample_name": "钢材样品1"}
-  ],
-  "test_items": ["Fe", "C", "Mn"]
+  "code": "500",
+  "response": null,
+  "message": "未找到正在进行的检测"
 }
 ```
 
-上传结果：
+缺少字段、空字段或额外字段属于请求格式错误，由 FastAPI 返回 HTTP 422。
 
-```json
-{
-  "order_no": "WO20260917001",
-  "results": [
-    {"sample_no": "S001", "test_item": "Fe", "value": 96.2, "unit": "%"},
-    {"sample_no": "S001", "test_item": "C", "value": 0.42, "unit": "%"}
-  ],
-  "finished": true
-}
-```
-
-回推结果：
-
-```text
-POST /api/work-orders/WO20260917001/push-to-lims
-```
-
-## 配置
+## 配置项
 
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `LIMS_DB_PATH` | `lims_demo.db` | SQLite 数据库路径 |
+| `LIMS_DB_PATH` | 项目根目录 `lims_demo.db` | SQLite 数据库路径 |
 | `LIMS_RESULT_URL` | `http://127.0.0.1:8000/mock/lims/results` | LIMS 结果接收地址 |
-| `CAPTURE_BACKEND` | `mock` | 录屏/截图适配器，当前支持 `mock` |
+| `CAPTURE_BACKEND` | `mock` | 当前可用的采集适配器 |
 
-## 测试
+生产联调前，应根据对方确认的地址和协议配置正式 LIMS，不要把本地 Mock 地址作为生产目标。
+
+## 测试与检查
 
 ```powershell
-python -m pytest
+pytest
 python -m compileall app main.py
 python -m pip check
 ```
 
-## 文档
+## 项目文档
 
-- [主要接口和功能](./主要接口和功能.md)
 - [启动与使用手册](./启动与使用手册.md)
 - [项目架构分析](./项目架构分析.md)
+- [主要接口和功能](./主要接口和功能.md)
 
-## 原型边界
+## 原型边界与生产化建议
 
-当前实现用于接口联调，默认不会调用 Windows 录屏程序，也不会生成真实视频或截图。正式部署前应接入经过确认的采集程序，补充鉴权、HTTPS、结构化日志、失败重试、数据库备份和监控；并发量增大后再评估迁移 PostgreSQL 和 Outbox 任务模式。
+当前实现用于接口联调和展示，默认没有鉴权、HTTPS、真实录屏程序、消息队列和自动重试。正式部署前应补充 API 鉴权、HTTPS、脱敏日志、数据库备份、LIMS 回推记录与失败重试。并发量增加后，建议迁移到 PostgreSQL，并使用 Outbox 或任务队列保证回推可靠性。

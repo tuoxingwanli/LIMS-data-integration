@@ -47,6 +47,17 @@ def make_client(tmp_path, capture=None, lims=None):
     return TestClient(app), settings.db_path
 
 
+def test_frontend_static_assets_are_served(tmp_path):
+    client, _ = make_client(tmp_path)
+    with client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "text/html" in page.headers["content-type"]
+        assert "LIMS · SCADA 对接控制台" in page.text
+        assert client.get("/styles.css").status_code == 200
+        assert client.get("/app.js").status_code == 200
+
+
 def test_work_order_loop_and_idempotent_result_update(tmp_path):
     lims = FakeLims()
     client, db_path = make_client(tmp_path, lims=lims)

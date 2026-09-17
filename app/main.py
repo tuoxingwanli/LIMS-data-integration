@@ -1,8 +1,10 @@
 """Application factory for the modular LIMS / SCADA integration service."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import detection, health, work_orders
 from app.core.config import Settings
@@ -40,6 +42,8 @@ def create_app(
     app.include_router(health.router)
     app.include_router(work_orders.router)
     app.include_router(detection.router)
+    frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
     return app
 
 
